@@ -174,6 +174,7 @@ public class GhostModeActivity extends BaseNekoXSettingsActivity {
     private final AbstractConfigCell sendWithoutSoundRow = cellGroup.appendCell(new ConfigCellCustom("SendWithoutSoundByDefault", CellGroup.ITEM_TYPE_TEXT_SETTINGS_CELL, true, R.string.SilentMessageByDefault));
     private final AbstractConfigCell sendWithoutSoundNoticeRow = cellGroup.appendCell(new ConfigCellCustom("SendWithoutSoundRowNotice", CellGroup.ITEM_TYPE_TEXT, false));
     private final AbstractConfigCell suggestGhostBeforeStoryRow = cellGroup.appendCell(new ConfigCellCustom("SuggestGhostModeBeforeViewingStory", CellGroup.ITEM_TYPE_TEXT_CHECK, false));
+    private final AbstractConfigCell exclusionsRow = cellGroup.appendCell(new ConfigCellCustom("AyuGhostExclusions", CellGroup.ITEM_TYPE_TEXT_SETTINGS_CELL, false, R.string.AyuGhostExclusions));
 
 
     private ActionBarMenuItem switchItem;
@@ -414,6 +415,16 @@ public class GhostModeActivity extends BaseNekoXSettingsActivity {
         NotificationCenter.getInstance(notifyAccount).postNotificationName(NotificationCenter.mainUserInfoChanged);
     }
 
+    /** Asks which exception list to edit, then opens the chat picker for it. */
+    private void showExclusionsTypeDialog() {
+        String[] items = new String[]{
+                getString(R.string.AyuGhostExclusionsRead),
+                getString(R.string.AyuGhostExclusionsTyping)
+        };
+        showSingleChoiceDialog(getParentActivity(), getString(R.string.AyuGhostExclusions), items, -1,
+                getResourceProvider(), which -> new AyuGhostExclusionsSheet(getParentActivity(), which == 1, this::updateGhostViews).show());
+    }
+
     private void showSendWithoutSoundDialog(View view) {
         if (getParentActivity() == null) return;
         int currentState = currentSettings.sendWithoutSound;
@@ -512,6 +523,8 @@ public class GhostModeActivity extends BaseNekoXSettingsActivity {
             currentSettings.suggestGhostModeBeforeViewingStory = v;
             currentSettings.save();
             ((TextCheckCell) view).setChecked(v);
+        } else if (row == exclusionsRow) {
+            showExclusionsTypeDialog();
         }
     }
 
