@@ -1,0 +1,78 @@
+name: ASR ARM64 APK
+on:
+  push:
+    branches: ['asr/**']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: asr-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      NATIVE_TARGET: arm64-v8a
+      ASR_KEYSTORE_FILE: ${{ runner.temp }}/asr-signing.jks
+      ASR_STORE_PASSWORD: ${{ secrets.ASR_STORE_PASSWORD }}
+      ASR_KEY_ALIAS: ${{ secrets.ASR_KEY_ALIAS }}
+      ASR_KEY_PASSWORD: ${{ secrets.ASR_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Restore signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ASR_KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_B64 ASR_STORE_PASSWORD ASR_KEY_ALIAS ASR_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing signing secret: $name. See Tools/asr/README.ru.md."
+              exit 1
+            fi
+          done
+          umask 077
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > "$ASR_KEYSTORE_FILE"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Test update helper
+        run: python3 Tools/asr/test-port-update.py
+      - name: Test API protocol
+        run: bash Tools/asr/check-protocol.sh
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-36 build-tools;36.0.0 ndk;27.2.12479018 cmake;3.31.6'
+      - name: Build signed ARM64 APK
+        run: |
+          ./gradlew TMessagesProj:assembleNormalStaging --max-workers=2 \
+            --init-script Tools/asr/signing.gradle \
+            '-Dorg.gradle.jvmargs=-Xmx5g -XX:MaxMetaspaceSize=1g'
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t apks < <(find TMessagesProj/build/outputs/apk/normal/staging -maxdepth 1 -name '*.apk')
+          [[ ${#apks[@]} == 1 ]]
+          apk=${apks[0]}
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose --print-certs "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 4 "$apk"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" | grep -Fx "native-code: 'arm64-v8a'"
+          cd "$(dirname "$apk")"
+          sha256sum "$(basename "$apk")" > "$(basename "$apk").sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NagramXF-ASR-arm64-${{ github.run_number }}
+          path: |
+            TMessagesProj/build/outputs/apk/normal/staging/*.apk
+            TMessagesProj/build/outputs/apk/normal/staging/*.sha256
+          if-no-files-found: error
+          retention-days: 30
+      - name: Remove signing key
+        if: always()
+        run: rm -f "$ASR_KEYSTORE_FILE"
