@@ -1,0 +1,12 @@
+gradle.beforeProject { p ->
+    p.plugins.withId('com.android.application') {
+        p.androidComponents.finalizeDsl { dsl ->
+            dsl.signingConfigs.getByName('release').with {
+                storeFile = new File(System.getenv('ASR_KEYSTORE_FILE'))
+                storePassword = System.getenv('ASR_STORE_PASSWORD')
+                keyAlias = System.getenv('ASR_KEY_ALIAS')
+                keyPassword = System.getenv('ASR_KEY_PASSWORD')
+            }
+        }
+    }
+}
